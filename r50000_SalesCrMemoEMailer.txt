@@ -1,0 +1,226 @@
+OBJECT Report 50000 Sales Cr. Memo E-Mailer
+{
+  OBJECT-PROPERTIES
+  {
+    Date=09-01-21;
+    Time=[ 1:09:47 PM];
+    Modified=Yes;
+    Version List=MEB1.0;
+  }
+  PROPERTIES
+  {
+    Permissions=TableData 112=m,
+                TableData 114=m;
+    ProcessingOnly=Yes;
+    OnInitReport=BEGIN
+
+                   CompanyInformation.GET;
+                   CompanyInformation.TESTFIELD("E-Mail");
+                   CRLF[1] := 13;
+                   CRLF[2] := 12;
+
+                   IF ISCLEAR(File_Folder) THEN
+                      CREATE(File_Folder,FALSE,TRUE);
+
+                   UserSetup.GET(USERID);
+                   IF UserSetup."Path to Save Report" = '' THEN
+                     ERROR(Test005);
+
+                   IF NOT File_Folder.FolderExists(UserSetup."Path to Save Report") THEN
+                     File_Folder.CreateFolder(UserSetup."Path to Save Report");
+
+                   IF ISCLEAR(WshShell) THEN
+                      CREATE(WshShell,FALSE,TRUE);
+					  
+                   WshShell.Run('rundll32 printui.dll,PrintUIEntry /y /n "Bullzip PDF Printer"');
+                 END;
+
+    OnPostReport=BEGIN
+
+                   CLEAR(WshShell);
+                 END;
+
+  }
+  DATASET
+  {
+    { 1000000000;;DataItem;                  ;
+               DataItemTable=Table114;
+               OnPreDataItem=BEGIN
+
+                               "Sales Cr.Memo Header".SETRANGE("No. E-Mailed", 0);
+                               IF CustomerFilter <> '' THEN BEGIN
+                                 "Sales Cr.Memo Header".SETFILTER("Sales Cr.Memo Header"."Bill-to Customer No.", CustomerFilter);
+                                 "Sales Cr.Memo Header".SETFILTER("No. E-Mailed", '<1');
+                                 IF "Sales Cr.Memo Header".GETFILTER("Posting Date") = '' THEN
+                                   ERROR(Text007);
+                               END;
+
+                               IF SalesInvoiceFilter <> '' THEN BEGIN
+                                 "Sales Cr.Memo Header".SETRANGE("No. E-Mailed");
+                                 "Sales Cr.Memo Header".SETFILTER("No.", SalesInvoiceFilter);
+                               END;
+
+                               IF (CustomerFilter = '') AND (SalesInvoiceFilter = '') THEN BEGIN
+                                 IF "Sales Cr.Memo Header".GETFILTER("Posting Date") = '' THEN
+                                   ERROR(Text007);
+
+                                 IF CONFIRM(Text006, FALSE) = FALSE THEN
+                                   CurrReport.QUIT;
+                               END;
+                             END;
+
+               OnAfterGetRecord=BEGIN
+
+                                  Cust.GET("Bill-to Customer No.");
+                                  IF Cust."E-Mail" = '' THEN BEGIN
+                                    SalesCrMemoHeader := "Sales Cr.Memo Header";
+                                    SalesCrMemoHeader."No. E-Mailed" := -1;
+                                    SalesCrMemoHeader.MODIFY;
+                                    CurrReport.SKIP;
+                                  END;
+
+                                  BullZipPdfMaker;
+                                END;
+
+               ReqFilterFields=Posting Date,Bill-to Customer No.,No.,Shortcut Dimension 1 Code }
+
+  }
+  REQUESTPAGE
+  {
+    PROPERTIES
+    {
+      SaveValues=Yes;
+    }
+    CONTROLS
+    {
+    }
+  }
+  LABELS
+  {
+  }
+  CODE
+  {
+    VAR
+      CompanyInformation@1000 : Record 79;
+      Cust@1001 : Record 18;
+      SMTPMail@1002 : Codeunit 400;
+      CRLF@1008 : Text[2];
+      Mail@1010 : Codeunit 397;
+      CustomerFilter@1011 : Text[250];
+      SalesInvoiceFilter@1012 : Text[250];
+      UserSetup@1013 : Record 91;
+      SalesCrMemoHeader@1014 : Record 114;
+      CrMemoReport@1015 : Report 207;
+      File_Folder@1016 : Automation "{420B2830-E718-11CF-893D-00A0C9054228} 1.0:{0D43FE01-F093-11CF-8940-00A0C9054228}:'Microsoft Scripting Runtime'.FileSystemObject";
+      WshShell@1017 : Automation "{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B} 1.0:{72C24DD5-D70A-438B-8A42-98424B88AFB8}:'Windows Script Host Object Model'.WshShell";
+      Text006@1026 : TextConst 'ENU=You are about to send all invoices to Clients, as email. Do you want to Continue?';
+      Text007@1027 : TextConst 'ENU=Please enter a filter for Posting Date';
+      Test005@1000000000 : TextConst 'ENU=Plese fill the Path name on User Setup Table';
+
+    LOCAL PROCEDURE SetCustomerFilter@1(Cust_Filter@1000 : Text[250]);
+    BEGIN
+      CustomerFilter := Cust_Filter;
+    END;
+
+    LOCAL PROCEDURE SetSalesInvoiceNoFilter@2(Invoice_Filter@1000 : Text[250]);
+    BEGIN
+      SalesInvoiceFilter := Invoice_Filter;
+    END;
+
+    PROCEDURE BullZipPdfMaker@1000000002();
+    VAR
+      pdfFileName@1000000011 : Text[250];
+      statusFileName@1000000010 : Text[250];
+      baseFolder@1000000004 : Text[250];
+      pdfSettings@1000000003 : Automation "{A3F69B34-EAD8-4A3B-8DD5-C1C3FD300D67} 4.0:{F6C83BBD-F620-4F13-8320-9C51D1996EC4}:'Bullzip - PDF Writer Automation'.ComPdfSettings";
+      pdfUtil@1000000002 : Automation "{A3F69B34-EAD8-4A3B-8DD5-C1C3FD300D67} 4.0:{F9444F96-C32A-4745-9FF3-9059B92CDAB0}:'Bullzip - PDF Writer Automation'.ComPdfUtil";
+      AttachmentText@1000000013 : Text[250];
+    BEGIN
+
+            CREATE(pdfSettings,FALSE,TRUE);
+            CREATE(pdfUtil,FALSE,TRUE);
+
+            baseFolder := UserSetup."Path to Save Report";
+
+            statusFileName := baseFolder + '\status.ini';
+
+            SalesCrMemoHeader := "Sales Cr.Memo Header";
+            SalesCrMemoHeader.SETRECFILTER;
+            pdfFileName := baseFolder + '\SalesCrMemo_' + SalesCrMemoHeader."No." + '.pdf';
+
+            IF EXISTS(pdfFileName) THEN ERASE(pdfFileName);
+
+            pdfSettings.printerName := pdfUtil.DefaultPrinterName; //'Bullzip PDF Printer';
+
+            // Set output file name
+            pdfSettings.SetValue('Output', pdfFileName);
+
+            // Make sure no dialogs are shown during conversion.
+            pdfSettings.SetValue('ShowSaveAs', 'never');
+            pdfSettings.SetValue('ShowSettings', 'never');
+            pdfSettings.SetValue('ShowPDF', 'no');
+            pdfSettings.SetValue('ShowProgress', 'no');
+            pdfSettings.SetValue('ShowProgressFinished', 'no');
+            pdfSettings.SetValue('ConfirmOverwrite', 'no');
+
+            // Set file name of status file to wait for.
+            pdfSettings.SetValue('StatusFile', statusFileName);
+
+            // Do not show errors in PDF user interface.
+            pdfSettings.SetValue('SuppressErrors', 'yes');
+
+            pdfSettings.WriteSettings(TRUE);
+
+            IF EXISTS(statusFileName) THEN ERASE(statusFileName);
+
+            CLEAR(CrMemoReport);
+            CrMemoReport.SETTABLEVIEW(SalesCrMemoHeader);
+            CrMemoReport.USEREQUESTPAGE(FALSE);
+            CrMemoReport.RUNMODAL;
+
+            REPORT.SAVEASPDF(207,pdfFileName,SalesCrMemoHeader);
+            SLEEP(2000);
+
+            IF EXISTS(pdfFileName) THEN BEGIN
+              SLEEP(100);
+              AttachmentText := 'Ne attachment e gjeni kredit noten per vitin 2020' ;
+
+              SMTPMail.CreateMessage(
+                CompanyInformation.Name,
+                CompanyInformation."E-Mail",
+                Cust."E-Mail",//LIVE
+                AttachmentText,//pdfFileName,
+                '',
+                TRUE);
+
+              SMTPMail.AppendBody('<b><font face="Cambria" color="black" size="2">T‰ nderuar,</b></font>', TRUE);
+              SMTPMail.AppendBody('<br><br>', TRUE);
+              SMTPMail.AppendBody('<font face="Cambria" color="black" size="2">Company Name informs you that your credit note is generated. ' +
+              'In the attachment you will see the credit note for the period... ' +
+              'For any other information please contact us via email:</font> ', TRUE);
+              SMTPMail.AppendBody('<font face="Cambria" color="black" size="2">' +
+              '<a href="mailto:mentorbibaj@hotmail.com">mentorbibaj@hotmail.com.</a></font>', TRUE);
+              SMTPMail.AppendBody('<br><br>', TRUE);
+              SMTPMail.AppendBody('<font face="Cambria" color="black" size="2">Thank you for being a client of ours.', FALSE);
+              SMTPMail.AppendBody('<br><br>', TRUE);
+              SMTPMail.AddAttachment(pdfFileName);
+              SMTPMail.Send;
+
+              SalesCrMemoHeader := "Sales Cr.Memo Header";
+              SalesCrMemoHeader.SETRECFILTER;
+              SalesCrMemoHeader.FIND;
+              SalesCrMemoHeader."No. E-Mailed" := SalesCrMemoHeader."No. E-Mailed" + 1;
+              SalesCrMemoHeader.MODIFY;
+              COMMIT;
+              ERASE(pdfFileName);
+            END;
+    END;
+
+    BEGIN
+    END.
+  }
+  RDLDATA
+  {
+  }
+}
+

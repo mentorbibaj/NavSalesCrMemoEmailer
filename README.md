@@ -2,7 +2,7 @@
 
 Dynamics NAV - Sales Cr. Memo Emailer Report sends mass emails to your clients.
 Requirements: 
-  * Dynamics NAV > 2009 
+  * Dynamics NAV > 2009(not tested for NAV 2009) & Setup Email
   * Bullzip PDF Printer https://www.bullzip.com/
 
 Procedure to install:
